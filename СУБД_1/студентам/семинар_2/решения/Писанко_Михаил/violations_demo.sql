@@ -1,10 +1,6 @@
--- ДЗ №2, часть 2 — демонстрация нарушений ограничений
+-- ДЗ 2, часть 2
 -- запускать после schema_1.sql и schema_2.sql
--- setup идемпотентный, скрипт можно гонять повторно
-
--- setup: минимальные тестовые данные, чтобы демонстрировать нарушения
--- на фоне валидных данных (иначе, например, вставка курса с ценой -500
--- упала бы раньше из-за отсутствия преподавателя, а не из-за CHECK)
+-- setup идемпотентный, можно гонять скрипт повторно
 
 INSERT INTO users (full_name, email, password_hash) VALUES
     ('Иван Преподавателев', 'teacher_demo@example.com', 'hash_teacher'),
@@ -36,7 +32,7 @@ WHERE c.title = 'Демо-курс для ДЗ №2' AND cat.name = 'Прогр�
 ON CONFLICT DO NOTHING;
 
 
--- 1. CHECK — пытаюсь создать курс с отрицательной ценой
+-- 1. CHECK, курс с отрицательной ценой
 DO $$
 DECLARE
     v_teacher_id INTEGER;
@@ -49,12 +45,12 @@ BEGIN
     VALUES ('Курс с отрицательной ценой', 'test', v_teacher_id, -500.00);
 EXCEPTION
     WHEN check_violation THEN
-        RAISE NOTICE 'Ошибка: стоимость курса не может быть отрицательной, курс нельзя продавать "в минус". Текст ошибки СУБД: %', SQLERRM;
+        RAISE NOTICE 'Ошибка: цена курса не может быть отрицательной. Текст ошибки СУБД: %', SQLERRM;
 END;
 $$;
 
 
--- 2. FOREIGN KEY — записываю студента на несуществующий курс
+-- 2. FOREIGN KEY, студент на несуществующий курс
 DO $$
 DECLARE
     v_student_id INTEGER;
@@ -72,19 +68,19 @@ END;
 $$;
 
 
--- 3. UNIQUE — регистрирую пользователя с уже занятой почтой
+-- 3. UNIQUE, повтор почты
 DO $$
 BEGIN
     INSERT INTO users (full_name, email, password_hash)
     VALUES ('Дубликат Почтова', 'teacher_demo@example.com', 'hash_dup');
 EXCEPTION
     WHEN unique_violation THEN
-        RAISE NOTICE 'Ошибка: пользователь с такой почтой уже зарегистрирован, почта используется как логин. Текст ошибки СУБД: %', SQLERRM;
+        RAISE NOTICE 'Ошибка: пользователь с такой почтой уже зарегистрирован. Текст ошибки СУБД: %', SQLERRM;
 END;
 $$;
 
 
--- 4. NOT NULL — создаю курс без названия
+-- 4. NOT NULL, курс без названия
 DO $$
 DECLARE
     v_teacher_id INTEGER;
@@ -97,12 +93,12 @@ BEGIN
     VALUES (NULL, 'Курс без названия', v_teacher_id, 100.00);
 EXCEPTION
     WHEN not_null_violation THEN
-        RAISE NOTICE 'Ошибка: у курса обязательно должно быть название, иначе его не найти в каталоге. Текст ошибки СУБД: %', SQLERRM;
+        RAISE NOTICE 'Ошибка: у курса должно быть название. Текст ошибки СУБД: %', SQLERRM;
 END;
 $$;
 
 
--- 5. PRIMARY KEY (составной) — повторно привязываю курс к той же категории
+-- 5. PRIMARY KEY (составной), повторная привязка курса к категории
 DO $$
 DECLARE
     v_course_id   INTEGER;
@@ -111,7 +107,6 @@ BEGIN
     SELECT c.id INTO v_course_id FROM courses c WHERE c.title = 'Демо-курс для ДЗ №2';
     SELECT cat.id INTO v_category_id FROM categories cat WHERE cat.name = 'Программирование';
 
-    -- эта пара уже есть после setup, вставка нарушит PK
     INSERT INTO course_categories (course_id, category_id)
     VALUES (v_course_id, v_category_id);
 EXCEPTION
