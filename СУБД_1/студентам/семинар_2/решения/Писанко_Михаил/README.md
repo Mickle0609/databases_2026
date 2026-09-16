@@ -8,24 +8,6 @@ EdTech, продолжение ДЗ №1.
 - violations_demo.sql - часть 2, нарушения ограничений
 - README.md (этот файл) - часть 3
 
-Запуск через докер, postgres 16, так же как в семинаре:
-
-```bash
-docker start pg16_check 2>/dev/null || docker run -d --name pg16_check -e POSTGRES_PASSWORD=postgres -p 5432:5432 postgres:16
-
-docker cp schema_1.sql pg16_check:/tmp/schema_1.sql
-docker cp schema_2.sql pg16_check:/tmp/schema_2.sql
-docker cp violations_demo.sql pg16_check:/tmp/violations_demo.sql
-
-docker exec -i pg16_check psql -U postgres -d postgres -f /tmp/schema_1.sql
-docker exec -i pg16_check psql -U postgres -d postgres -f /tmp/schema_2.sql
-docker exec -i pg16_check psql -U postgres -d postgres -f /tmp/violations_demo.sql
-```
-
-на винде перед docker cp/exec нужно ставить MSYS_NO_PATHCONV=1, иначе git bash ломает пути
-
-в конце должно вывестись 5 NOTICE, по одной на каждое нарушение
-
 ## часть 1
 
 добавил две таблицы. categories - просто справочник категорий курса (программирование, дизайн и тд), и course_categories - таблица которая связывает курсы и категории.
@@ -46,4 +28,18 @@ docker exec -i pg16_check psql -U postgres -d postgres -f /tmp/violations_demo.s
 | 4 | NOT NULL | INSERT INTO courses (title, description, teacher_id, price) VALUES (NULL, 'Курс без названия', <teacher_id>, 100.00); | null value in column "title" of relation "courses" violates not-null constraint | у курса должно быть название | заполнить название |
 | 5 | PRIMARY KEY | INSERT INTO course_categories (course_id, category_id) VALUES (...); повторно | duplicate key value violates unique constraint "course_categories_pkey" | курс уже привязан к этой категории | проверять перед вставкой или ON CONFLICT DO NOTHING |
 
-выводы: ограничения ловят кривые данные прямо в базе, ещё до того как они дойдут до кода приложения, поэтому эти же проверки не приходится дублировать в бэкенде. SQLERRM для пользователя показывать не надо, это для логов, а нормальный текст ошибки пишем сами. составной pk в course_categories удобен тем что сразу и от дублей защищает и индекс дает бесплатно. cascade delete в таблице-посреднике не страшный, он чистит только связи а не сами курсы/категории.
+## Краткие выводы
+
+- Ограничения целостности (`CHECK`, `FOREIGN KEY`, `UNIQUE`, `NOT NULL`, `PRIMARY KEY`)
+  надёжно защищают базу от некорректных данных ещё до того, как они попадут в
+  бизнес-логику приложения — ошибка возникает на уровне СУБД, а не где-то в коде
+- Технический текст ошибки СУБД (`SQLERRM`) полезен разработчику для отладки,
+  но непригоден для показа пользователю — поэтому в приложении такие ошибки
+  нужно перехватывать (как в блоках `DO $$ ... EXCEPTION ... END $$`) и
+  превращать в понятные бизнес-сообщения
+- Составной первичный ключ в таблице-посреднике (`course_categories`) — удобный
+  и дешёвый способ одновременно запретить дубли M:N-связи и ускорить выборку
+  по одной из сторон связи, без создания дополнительного `UNIQUE`-ограничения
+- `ON DELETE CASCADE` на таблице-посреднике безопасен: он чистит только сами
+  связи, а не сущности по обе стороны отношения (курсы и категории остаются
+  на месте)
